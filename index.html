@@ -141,20 +141,15 @@
       </label>
 
       <fieldset class="settings">
-        <legend>Model</legend>
-        <label for="provider">Provider</label>
-        <select id="provider"></select>
-
+        <legend>Groq</legend>
         <label for="model">Model name</label>
-        <input id="model" type="text" spellcheck="false" autocomplete="off">
+        <input id="model" type="text" spellcheck="false" autocomplete="off" placeholder="Model name from your Groq console">
 
-        <div id="key-row" hidden>
-          <label for="api-key">Groq API key</label>
-          <input id="api-key" type="password" spellcheck="false" autocomplete="off" placeholder="gsk_…">
-          <label class="check"><input type="checkbox" id="remember"> Remember this key in this browser</label>
-        </div>
+        <label for="api-key">API key</label>
+        <input id="api-key" type="password" spellcheck="false" autocomplete="off" placeholder="gsk_…">
+        <label class="check"><input type="checkbox" id="remember"> Remember this key in this browser</label>
 
-        <p class="note" id="engine"></p>
+        <p class="note">The text of both files is sent to Groq with your API key, so usage is billed to your Groq account. The key is not stored on the server.</p>
       </fieldset>
 
       <button type="submit" id="go">Check fit</button>
@@ -191,29 +186,18 @@
   const arc = document.getElementById('arc');
   const gaugeNum = document.getElementById('gauge-num');
 
-  // ---- Model settings: provider, model name, API key ----
-  const providerEl = document.getElementById('provider');
+  // ---- Groq settings: model name and API key ----
   const modelEl = document.getElementById('model');
-  const keyRow = document.getElementById('key-row');
   const keyEl = document.getElementById('api-key');
   const rememberEl = document.getElementById('remember');
-  const engineEl = document.getElementById('engine');
-  const LABELS = { ollama: 'Ollama (local)', groq: 'Groq' };
   const STORE = 'fitcheck.settings';
   const KEYSTORE = 'fitcheck.key';
-
-  let cfg = { providers: ['ollama', 'groq'], provider: 'ollama', models: { ollama: 'gemma3:1b', groq: '' } };
-  let saved = { provider: null, models: {}, remember: false };
-  let current = null;
 
   const readStore = (store, k) => { try { return store.getItem(k); } catch { return null; } };
   const writeStore = (store, k, v) => { try { v === null ? store.removeItem(k) : store.setItem(k, v); } catch {} };
 
   function persist() {
-    saved.provider = providerEl.value;
-    saved.models[providerEl.value] = modelEl.value.trim();
-    saved.remember = rememberEl.checked;
-    writeStore(localStorage, STORE, JSON.stringify(saved));
+    writeStore(localStorage, STORE, JSON.stringify({ model: modelEl.value.trim(), remember: rememberEl.checked }));
     // The key lives in exactly one place: this browser's localStorage if "remember" is ticked,
     // otherwise sessionStorage (gone when the tab closes).
     const key = keyEl.value.trim();
@@ -221,30 +205,17 @@
     writeStore(sessionStorage, KEYSTORE, !rememberEl.checked && key ? key : null);
   }
 
-  function applyProvider(name) {
-    if (current) saved.models[current] = modelEl.value.trim();
-    current = name;
-    providerEl.value = name;
-    modelEl.value = saved.models[name] || cfg.models[name] || '';
-    modelEl.placeholder = name === 'groq' ? 'Model name from your Groq console' : 'For example gemma3:1b';
-    keyRow.hidden = name !== 'groq';
-    engineEl.textContent = name === 'groq'
-      ? 'The text of both files is sent to Groq with your API key, so usage is billed to your Groq account. The key is not stored on the server.'
-      : 'Runs on the Ollama server this app is connected to. Nothing is sent to a third party.';
-  }
-
   async function initSettings() {
-    try { const r = await fetch('/api/config'); if (r.ok) cfg = await r.json(); } catch {}
-    try { saved = { ...saved, ...JSON.parse(readStore(localStorage, STORE) || '{}') }; } catch {}
-    saved.models = saved.models || {};
-    providerEl.innerHTML = '';
-    for (const p of cfg.providers) providerEl.add(new Option(LABELS[p] || p, p));
+    let defaultModel = '';
+    try { const r = await fetch('/api/config'); if (r.ok) defaultModel = (await r.json()).model || ''; } catch {}
+    let saved = {};
+    try { saved = JSON.parse(readStore(localStorage, STORE) || '{}'); } catch {}
+    // saved.models.groq: settings written by the earlier two-provider version of this page
+    modelEl.value = saved.model || (saved.models && saved.models.groq) || defaultModel;
     rememberEl.checked = !!saved.remember;
     keyEl.value = readStore(localStorage, KEYSTORE) || readStore(sessionStorage, KEYSTORE) || '';
-    applyProvider(cfg.providers.includes(saved.provider) ? saved.provider : cfg.provider);
   }
 
-  providerEl.addEventListener('change', () => { applyProvider(providerEl.value); persist(); });
   [modelEl, keyEl, rememberEl].forEach(el => el.addEventListener('change', persist));
   initSettings();
 
@@ -331,12 +302,11 @@
     const resume = form.resume.files[0];
     if (!jd || !resume) return;
 
-    const provider = providerEl.value;
     const model = modelEl.value.trim();
     const apiKey = keyEl.value.trim();
-    if (!model || (provider === 'groq' && !apiKey)) {
+    if (!model || !apiKey) {
       const missing = !model ? modelEl : keyEl;
-      showError(missing === modelEl ? 'Enter a model name to continue.' : 'Enter your Groq API key to continue.');
+      showError(!model ? 'Enter a Groq model name to continue.' : 'Enter your Groq API key to continue.');
       missing.focus();
       return;
     }
@@ -345,9 +315,8 @@
     const fd = new FormData();
     fd.append('jd', jd);
     fd.append('resume', resume);
-    fd.append('provider', provider);
     fd.append('model', model);
-    if (provider === 'groq') fd.append('api_key', apiKey);
+    fd.append('api_key', apiKey);
 
     go.disabled = true;
     go.textContent = 'Checking…';
