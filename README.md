@@ -1,3 +1,4 @@
+'''
 # Optional. Copy to .env for local runs. Do not commit .env.
 # The provider, model name and Groq API key are entered in the web page, not here.
 
@@ -12,3 +13,4 @@ OLLAMA_MODEL=gemma3:1b
 
 # Optional: prefill the Groq model name in the page (users can still change it).
 # GROQ_MODEL=name-of-a-model-from-the-groq-console
+'''
