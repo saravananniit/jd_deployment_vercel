@@ -1,1 +1,1 @@
-# JD vs Resume Check using Ollama model / Groq
+# JD vs Resume Check using Groq model
